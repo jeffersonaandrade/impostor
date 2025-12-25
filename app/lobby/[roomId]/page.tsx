@@ -295,7 +295,7 @@ export default function LobbyPage() {
             <CardHeader>
               <CardTitle className="text-white">Configurar Jogo</CardTitle>
               <CardDescription className="text-gray-400">
-                Digite o tema para o jogo (ex: "Séries dos anos 90")
+                Digite o tema para o jogo (ex: &quot;Séries dos anos 90&quot;)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
