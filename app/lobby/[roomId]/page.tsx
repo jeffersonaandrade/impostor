@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Toast } from "@/components/ui/toast";
-import { Copy, MessageCircle, Clock, X } from "lucide-react";
+import { Copy, MessageCircle, Clock, X, LogOut } from "lucide-react";
 import { useGameStore } from "@/lib/store";
 import { startGame, removePlayer } from "@/app/actions/game";
 
@@ -89,6 +89,12 @@ export default function LobbyPage() {
             } else {
               setIsHost(false);
             }
+          } else {
+            // Sessão expirada: playerId existe no localStorage mas não está mais na sala
+            console.log("Sessão expirada: jogador não encontrado na sala");
+            localStorage.removeItem(`player_${roomId}`);
+            router.push(`/join/${roomId}`);
+            return;
           }
         }
         
@@ -202,6 +208,26 @@ export default function LobbyPage() {
     }
   };
 
+  const handleLeaveRoom = async () => {
+    if (!currentPlayerId) return;
+    
+    try {
+      // Remover jogador do Firestore
+      await removePlayer(roomId, currentPlayerId);
+      
+      // Limpar localStorage
+      localStorage.removeItem(`player_${roomId}`);
+      
+      // Redirecionar para home
+      router.push("/");
+    } catch (error: any) {
+      console.error("Erro ao sair da sala:", error);
+      // Mesmo com erro, limpar localStorage e redirecionar
+      localStorage.removeItem(`player_${roomId}`);
+      router.push("/");
+    }
+  };
+
   if (!hasJoined) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -241,6 +267,20 @@ export default function LobbyPage() {
   return (
     <div className="min-h-screen p-4">
       <div className="max-w-2xl mx-auto space-y-6">
+        {/* Botão Sair - Canto superior direito */}
+        <div className="flex justify-end">
+          <Button
+            onClick={handleLeaveRoom}
+            variant="ghost"
+            size="sm"
+            className="text-gray-400 hover:text-white hover:bg-gray-900"
+            title="Sair da sala"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sair da Sala
+          </Button>
+        </div>
+
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-bold text-white">Sala: {roomId}</h1>
           <p className="text-gray-400">Aguardando jogadores...</p>

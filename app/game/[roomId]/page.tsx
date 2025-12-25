@@ -7,9 +7,9 @@ import { db } from "@/lib/firebase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Toast } from "@/components/ui/toast";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, LogOut } from "lucide-react";
 import { useGameStore } from "@/lib/store";
-import { resetGame } from "@/app/actions/game";
+import { resetGame, removePlayer } from "@/app/actions/game";
 
 export default function GamePage() {
   const params = useParams();
@@ -51,6 +51,12 @@ export default function GamePage() {
           setSecretWord(data.secretWord || null);
           setCategory(data.category || null);
           setTheme(data.theme || null);
+        } else {
+          // Sessão expirada: playerId existe no localStorage mas não está mais na sala
+          console.log("Sessão expirada: jogador não encontrado na sala");
+          localStorage.removeItem(`player_${roomId}`);
+          router.push(`/join/${roomId}`);
+          return;
         }
 
         // Fake loading de 2 segundos para aumentar tensão
@@ -82,11 +88,48 @@ export default function GamePage() {
     }
   };
 
+  const handleLeaveRoom = async () => {
+    const playerId = localStorage.getItem(`player_${roomId}`);
+    if (!playerId) {
+      router.push("/");
+      return;
+    }
+    
+    try {
+      // Remover jogador do Firestore
+      await removePlayer(roomId, playerId);
+      
+      // Limpar localStorage
+      localStorage.removeItem(`player_${roomId}`);
+      
+      // Redirecionar para home
+      router.push("/");
+    } catch (error: any) {
+      console.error("Erro ao sair da sala:", error);
+      // Mesmo com erro, limpar localStorage e redirecionar
+      localStorage.removeItem(`player_${roomId}`);
+      router.push("/");
+    }
+  };
+
   const isHost = currentPlayer?.isHost || false;
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4 relative">
+        {/* Botão Sair - Canto superior direito */}
+        <div className="absolute top-4 right-4">
+          <Button
+            onClick={handleLeaveRoom}
+            variant="ghost"
+            size="sm"
+            className="text-gray-400 hover:text-white hover:bg-gray-900"
+            title="Sair da sala"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sair
+          </Button>
+        </div>
         <div className="text-center space-y-4">
           <div className="animate-pulse">
             <div className="w-16 h-16 border-4 border-red-600 border-t-transparent rounded-full mx-auto animate-spin"></div>
@@ -104,14 +147,40 @@ export default function GamePage() {
 
   if (!currentPlayer) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center relative">
+        {/* Botão Sair - Canto superior direito */}
+        <div className="absolute top-4 right-4">
+          <Button
+            onClick={handleLeaveRoom}
+            variant="ghost"
+            size="sm"
+            className="text-gray-400 hover:text-white hover:bg-gray-900"
+            title="Sair da sala"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sair
+          </Button>
+        </div>
         <p className="text-white">Carregando...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 pb-32">
+    <div className="min-h-screen flex items-center justify-center p-4 pb-32 relative">
+      {/* Botão Sair - Canto superior direito */}
+      <div className="absolute top-4 right-4">
+        <Button
+          onClick={handleLeaveRoom}
+          variant="ghost"
+          size="sm"
+          className="text-gray-400 hover:text-white hover:bg-gray-900"
+          title="Sair da sala"
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          Sair
+        </Button>
+      </div>
       {!revealed ? (
         <Card
           onClick={handleReveal}
