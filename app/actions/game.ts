@@ -50,26 +50,65 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
     // Gerar palavra secreta usando Groq (evitando palavras já usadas)
     const { secret_word, category } = await generateSecretWord(theme, usedWords);
 
-    // Criar array de papéis: N impostores e o resto cidadãos
-    const roles: ("impostor" | "citizen")[] = [];
-    for (let i = 0; i < numImpostors; i++) {
-      roles.push("impostor");
+    // ============================================
+    // LÓGICA DE ATRIBUIÇÃO DE PAPÉIS (ROLE ASSIGNMENT)
+    // ============================================
+    
+    // 1. Criar array de papéis com tamanho exato dos jogadores (Algoritmo "Baralho de Cartas")
+    const totalPlayers = players.length;
+    const roles: ("impostor" | "citizen")[] = new Array(totalPlayers);
+    
+    // 2. Preencher com quantidade exata de impostores e resto cidadãos
+    for (let i = 0; i < totalPlayers; i++) {
+      roles[i] = i < numImpostors ? "impostor" : "citizen";
     }
-    for (let i = numImpostors; i < players.length; i++) {
-      roles.push("citizen");
-    }
-
-    // Embaralhar (shuffle) o array de papéis
+    
+    // 3. Embaralhamento Robusto (Fisher-Yates Shuffle)
     for (let i = roles.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [roles[i], roles[j]] = [roles[j], roles[i]];
     }
     
-    // Distribuir papéis embaralhados aos jogadores
-    const playersWithRoles = players.map((player: any, index: number) => ({
+    // 4. Mapeamento 1:1 - Atribuir roles[index] para cada jogador
+    let playersWithRoles = players.map((player: any, index: number) => ({
       ...player,
       role: roles[index],
     }));
+    
+    // 5. Validação de Segurança (Safety Check) - ANTES de salvar no Firestore
+    let contagemImpostores = playersWithRoles.filter((p: any) => p.role === "impostor").length;
+    
+    if (contagemImpostores !== numImpostors) {
+      // Correção manual: garantir que a contagem esteja correta
+      console.error(`ERRO CRÍTICO: Contagem de impostores incorreta! Solicitado: ${numImpostors}, Gerado: ${contagemImpostores}`);
+      
+      // Forçar correção: definir os primeiros N jogadores como impostor e resto como cidadão
+      const playersCorrected = players.map((player: any, index: number) => ({
+        ...player,
+        role: index < numImpostors ? "impostor" : "citizen",
+      }));
+      
+      // Embaralhar novamente após correção usando Fisher-Yates
+      for (let i = playersCorrected.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [playersCorrected[i], playersCorrected[j]] = [playersCorrected[j], playersCorrected[i]];
+      }
+      
+      // Re-validar após correção
+      contagemImpostores = playersCorrected.filter((p: any) => p.role === "impostor").length;
+      if (contagemImpostores !== numImpostors) {
+        throw new Error(`Falha crítica na atribuição de papéis. Jogadores: ${totalPlayers}, Impostores solicitados: ${numImpostors}, Impostores gerados: ${contagemImpostores}`);
+      }
+      
+      // Usar a versão corrigida
+      playersWithRoles = playersCorrected;
+      
+      // 6. Logging
+      console.log(`[ROLE ASSIGNMENT] Jogadores: ${totalPlayers}, Impostores Solicitados: ${numImpostors}, Impostores Gerados: ${contagemImpostores} (CORRIGIDO)`);
+    } else {
+      // 6. Logging
+      console.log(`[ROLE ASSIGNMENT] Jogadores: ${totalPlayers}, Impostores Solicitados: ${numImpostors}, Impostores Gerados: ${contagemImpostores}`);
+    }
 
     // Adicionar a nova palavra ao array de palavras usadas
     const updatedUsedWords = [...usedWords, secret_word];
