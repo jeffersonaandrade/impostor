@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Toast } from "@/components/ui/toast";
-import { Copy, MessageCircle, Clock } from "lucide-react";
+import { Copy, MessageCircle, Clock, X } from "lucide-react";
 import { useGameStore } from "@/lib/store";
-import { startGame } from "@/app/actions/game";
+import { startGame, removePlayer } from "@/app/actions/game";
 
 export default function LobbyPage() {
   const params = useParams();
@@ -51,6 +51,7 @@ export default function LobbyPage() {
           players: [],
           gameStarted: false,
           status: "waiting",
+          usedWords: [],
         });
       }
     });
@@ -120,14 +121,15 @@ export default function LobbyPage() {
     
     if (!roomSnap.exists()) {
       // Criar sala
-      await setDoc(roomRef, {
-        id: roomId,
-        players: [{ id: playerId, name: playerName, isHost: true }],
-        hostId: playerId,
-        gameStarted: false,
-        status: "waiting",
-        createdAt: serverTimestamp(),
-      });
+        await setDoc(roomRef, {
+          id: roomId,
+          players: [{ id: playerId, name: playerName, isHost: true }],
+          hostId: playerId,
+          gameStarted: false,
+          status: "waiting",
+          usedWords: [],
+          createdAt: serverTimestamp(),
+        });
       setIsHost(true);
     } else {
       // Adicionar jogador
@@ -185,6 +187,19 @@ export default function LobbyPage() {
     if (!inviteLink) return;
     const message = encodeURIComponent(`Vem jogar Impostor comigo! 🎮\n\n${inviteLink}`);
     window.open(`https://wa.me/?text=${message}`, "_blank");
+  };
+
+  const handleRemovePlayer = async (playerIdToRemove: string) => {
+    if (!isHost) return;
+    if (playerIdToRemove === currentPlayerId) return; // Não pode remover a si mesmo
+    
+    try {
+      await removePlayer(roomId, playerIdToRemove);
+    } catch (error: any) {
+      console.error("Erro ao remover jogador:", error);
+      setToastMessage(error.message || "Erro ao remover jogador");
+      setShowToast(true);
+    }
   };
 
   if (!hasJoined) {
@@ -280,9 +295,23 @@ export default function LobbyPage() {
                   key={player.id}
                   className="flex items-center justify-between p-3 bg-black rounded border border-gray-800"
                 >
-                  <span className="text-white font-medium">{player.name}</span>
-                  {player.isHost && (
-                    <span className="text-xs text-red-500 font-semibold">HOST</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-medium">{player.name}</span>
+                    {player.isHost && (
+                      <span className="text-xs text-red-500 font-semibold">HOST</span>
+                    )}
+                  </div>
+                  {/* Botão de remover - apenas host pode ver, e não pode remover a si mesmo */}
+                  {isHost && player.id !== currentPlayerId && !gameData?.gameStarted && (
+                    <Button
+                      onClick={() => handleRemovePlayer(player.id)}
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-gray-400 hover:text-red-500 hover:bg-red-500/10"
+                      title="Remover jogador"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   )}
                 </div>
               ))}

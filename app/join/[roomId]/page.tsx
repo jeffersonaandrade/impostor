@@ -47,6 +47,7 @@ export default function JoinPage() {
           hostId: playerId,
           gameStarted: false,
           status: "waiting",
+          usedWords: [],
           createdAt: serverTimestamp(),
         });
       } else {

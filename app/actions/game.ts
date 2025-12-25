@@ -44,8 +44,11 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       }
     }
 
-    // Gerar palavra secreta usando Groq
-    const { secret_word, category } = await generateSecretWord(theme);
+    // Ler palavras já usadas nesta sala
+    const usedWords = roomData?.usedWords || [];
+
+    // Gerar palavra secreta usando Groq (evitando palavras já usadas)
+    const { secret_word, category } = await generateSecretWord(theme, usedWords);
 
     // Criar array de papéis: N impostores e o resto cidadãos
     const roles: ("impostor" | "citizen")[] = [];
@@ -68,6 +71,9 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       role: roles[index],
     }));
 
+    // Adicionar a nova palavra ao array de palavras usadas
+    const updatedUsedWords = [...usedWords, secret_word];
+
     // Atualizar sala com dados do jogo
     await updateDoc(roomRef, {
       gameStarted: true,
@@ -77,6 +83,7 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       category,
       numImpostors,
       players: playersWithRoles,
+      usedWords: updatedUsedWords,
       startedAt: new Date().toISOString(),
       lastGameStartedAt: new Date().toISOString(),
     });
@@ -89,6 +96,50 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
   // O redirect lança um erro especial que o Next.js captura para navegação
   // Se estiver dentro do try/catch, será tratado como erro comum
   redirect(`/game/${roomId}`);
+}
+
+export async function removePlayer(roomId: string, playerIdToRemove: string) {
+  try {
+    const roomRef = doc(db, "rooms", roomId);
+    const roomSnap = await getDoc(roomRef);
+
+    if (!roomSnap.exists()) {
+      throw new Error("Sala não encontrada");
+    }
+
+    const roomData = roomSnap.data();
+    
+    // Não permitir remover se o jogo já começou
+    if (roomData?.gameStarted || roomData?.status === "playing") {
+      throw new Error("Não é possível remover jogadores durante o jogo");
+    }
+
+    const players = roomData?.players || [];
+    
+    // Filtrar o jogador a ser removido
+    const updatedPlayers = players.filter((player: any) => player.id !== playerIdToRemove);
+
+    // Se o jogador removido era o host, definir o primeiro jogador restante como host
+    let hostId = roomData?.hostId;
+    if (hostId === playerIdToRemove && updatedPlayers.length > 0) {
+      hostId = updatedPlayers[0].id;
+      // Atualizar o flag isHost nos jogadores
+      updatedPlayers.forEach((player: any, index: number) => {
+        player.isHost = index === 0;
+      });
+    }
+
+    // Atualizar sala removendo o jogador
+    await updateDoc(roomRef, {
+      players: updatedPlayers,
+      hostId: hostId,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Erro ao remover jogador:", error);
+    throw error;
+  }
 }
 
 export async function resetGame(roomId: string) {

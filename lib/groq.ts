@@ -16,13 +16,22 @@ const GROQ_MODEL = "llama-3.3-70b-versatile";
 /**
  * Gera uma palavra secreta e categoria baseada no tema fornecido
  * @param theme - Tema do jogo (ex: "Séries dos anos 90")
+ * @param forbiddenWords - Array de palavras que não podem ser usadas (já usadas anteriormente)
  * @returns Objeto com secret_word e category
  */
-export async function generateSecretWord(theme: string): Promise<{
+export async function generateSecretWord(theme: string, forbiddenWords: string[] = []): Promise<{
   secret_word: string;
   category: string;
 }> {
   const systemPrompt = `Você é um mestre de jogo. Retorne APENAS um JSON válido no formato: { "secret_word": "...", "category": "..." } baseado no tema fornecido pelo usuário. A palavra secreta deve ser algo específico e interessante relacionado ao tema. A categoria deve ser uma descrição breve do tema.`;
+
+  // Construir mensagem do usuário com lista de palavras proibidas
+  let userMessage = `Tema: ${theme}`;
+  
+  if (forbiddenWords.length > 0) {
+    const forbiddenList = forbiddenWords.slice(0, 20).join(", "); // Limitar a 20 para não exceder tokens
+    userMessage += `\n\nIMPORTANTE: A palavra secreta NÃO PODE ser nenhuma das seguintes palavras já usadas: ${forbiddenList}. Gere uma palavra NOVA e DIFERENTE relacionada ao tema.`;
+  }
 
   try {
     const completion = await groq.chat.completions.create({
@@ -33,7 +42,7 @@ export async function generateSecretWord(theme: string): Promise<{
         },
         {
           role: "user",
-          content: `Tema: ${theme}`,
+          content: userMessage,
         },
       ],
       model: GROQ_MODEL, // Modelo explícito: llama-3.3-70b-versatile
