@@ -33,16 +33,18 @@ export async function requestVote(roomId: string, playerId: string) {
     // Calcular jogadores vivos
     const alivePlayers = players.filter((p: any) => !deadPlayerIds.includes(p.id));
     const aliveCount = alivePlayers.length;
-    const requiredVotes = Math.ceil(aliveCount / 2); // >50%
+    const threshold = aliveCount / 2; // Metade dos jogadores vivos
 
-    // Se atingiu >50%, iniciar votação
-    if (updatedVoteRequests.length > requiredVotes) {
+    // Se o número de pedidos for maior que a metade dos vivos, iniciar votação
+    // Usar >= para garantir que quando atingir exatamente a maioria, mude o status
+    if (updatedVoteRequests.length > threshold) {
       await updateDoc(roomRef, {
         status: "voting",
         voteRequests: updatedVoteRequests,
         votes: {}, // Limpar votos anteriores
       });
     } else {
+      // Apenas atualiza a lista de pedidos
       await updateDoc(roomRef, {
         voteRequests: updatedVoteRequests,
       });
