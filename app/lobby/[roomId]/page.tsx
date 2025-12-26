@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Toast } from "@/components/ui/toast";
-import { Copy, MessageCircle, Clock, X, LogOut } from "lucide-react";
+import { Copy, MessageCircle, Clock, X, LogOut, QrCode } from "lucide-react";
+import QRCodeSVG from "react-qr-code";
 import { useGameStore } from "@/lib/store";
 import { startGame, removePlayer } from "@/app/actions/game";
 
@@ -30,15 +31,19 @@ export default function LobbyPage() {
   const [toastMessage, setToastMessage] = useState("");
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
   const [hostName, setHostName] = useState<string>("");
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
 
   const { setRoomId, setCurrentPlayer, setTheme: setStoreTheme } = useGameStore();
 
   useEffect(() => {
     setRoomId(roomId);
     
-    // Gerar link de convite
+    // Gerar link de convite e URL do QR Code
     if (typeof window !== "undefined") {
-      setInviteLink(`${window.location.origin}/join/${roomId}`);
+      const url = `${window.location.origin}/join/${roomId}`;
+      setInviteLink(url);
+      setQrCodeUrl(url);
     }
     
     // Verificar se já existe a sala
@@ -312,14 +317,45 @@ export default function LobbyPage() {
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
-            <Button
-              onClick={handleShareWhatsApp}
-              variant="outline"
-              className="w-full border-gray-700 text-white hover:bg-gray-900 hover:text-white"
-            >
-              <MessageCircle className="h-4 w-4 mr-2" />
-              Compartilhar no WhatsApp
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleShareWhatsApp}
+                variant="outline"
+                className="flex-1 border-gray-700 text-white hover:bg-gray-900 hover:text-white"
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Compartilhar no WhatsApp
+              </Button>
+              <Button
+                onClick={() => setShowQRCode(!showQRCode)}
+                variant="outline"
+                className="flex-1 border-gray-700 text-white hover:bg-gray-900 hover:text-white"
+              >
+                <QrCode className="h-4 w-4 mr-2" />
+                {showQRCode ? "Ocultar" : "Mostrar"} QR Code
+              </Button>
+            </div>
+            {/* Seção do QR Code - Expansível */}
+            {showQRCode && qrCodeUrl && (
+              <div className="pt-4 border-t border-gray-800">
+                <div className="flex flex-col items-center space-y-3">
+                  <p className="text-sm text-gray-400 text-center">
+                    Escaneie o QR Code para entrar na sala
+                  </p>
+                  <div className="bg-white p-4 rounded-lg">
+                    <QRCodeSVG
+                      value={qrCodeUrl}
+                      size={256}
+                      level="H"
+                      style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 text-center max-w-xs">
+                    {qrCodeUrl}
+                  </p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
