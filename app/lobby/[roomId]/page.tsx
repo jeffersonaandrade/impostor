@@ -317,14 +317,14 @@ export default function LobbyPage() {
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 onClick={handleShareWhatsApp}
                 variant="outline"
                 className="flex-1 border-gray-700 text-white hover:bg-gray-900 hover:text-white"
               >
                 <MessageCircle className="h-4 w-4 mr-2" />
-                Compartilhar no WhatsApp
+                <span className="hidden sm:inline">Compartilhar no </span>WhatsApp
               </Button>
               <Button
                 onClick={() => setShowQRCode(!showQRCode)}
@@ -339,18 +339,19 @@ export default function LobbyPage() {
             {showQRCode && qrCodeUrl && (
               <div className="pt-4 border-t border-gray-800">
                 <div className="flex flex-col items-center space-y-3">
-                  <p className="text-sm text-gray-400 text-center">
+                  <p className="text-sm text-gray-400 text-center px-2">
                     Escaneie o QR Code para entrar na sala
                   </p>
-                  <div className="bg-white p-4 rounded-lg">
+                  <div className="bg-white p-3 sm:p-4 rounded-lg w-full max-w-[256px]">
                     <QRCodeSVG
                       value={qrCodeUrl}
                       size={256}
                       level="H"
                       style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                      viewBox="0 0 256 256"
                     />
                   </div>
-                  <p className="text-xs text-gray-500 text-center max-w-xs">
+                  <p className="text-xs text-gray-500 text-center max-w-xs break-all px-2">
                     {qrCodeUrl}
                   </p>
                 </div>
