@@ -200,10 +200,14 @@ export default function GamePage() {
   const playerId = localStorage.getItem(`player_${roomId}`);
   const isAlive = playerId && !deadPlayerIds.includes(playerId);
   
-  // Contar votos de pedido
+  // Contar votos de pedido (em tempo real do Firestore)
   const voteRequests = gameData?.voteRequests || [];
   const requiredVotes = Math.ceil(alivePlayers.length / 2);
   const voteRequestsCount = voteRequests.length;
+  
+  // Verificar se o jogador atual já pediu votação (em tempo real do Firestore)
+  // Isso garante que a UI atualize automaticamente quando outros jogadores pedirem votação
+  const hasRequestedVoteRealTime = playerId ? voteRequests.includes(playerId) : false;
 
   if (isLoading) {
     return (
@@ -539,24 +543,32 @@ export default function GamePage() {
           {gameStatus === "playing" && isAlive && revealed && (
             <Card className="bg-[#0a0a0a] border-gray-800">
               <CardContent className="p-4 space-y-3">
-                {!hasRequestedVote ? (
-                  <>
-                    <Button
-                      onClick={handleRequestVote}
-                      className="w-full bg-red-600 hover:bg-red-700 text-white"
-                    >
-                      <Vote className="h-4 w-4 mr-2" />
-                      Sugerir Votação
-                    </Button>
-                    <p className="text-xs text-gray-500 text-center">
-                      {voteRequestsCount}/{requiredVotes} jogadores pediram votação
-                    </p>
-                  </>
+                {/* Contador de votos - sempre visível */}
+                <div className="text-center mb-2">
+                  <p className="text-xs text-gray-400">
+                    {voteRequestsCount}/{requiredVotes} jogadores pediram votação
+                  </p>
+                </div>
+                
+                {/* Botão ou feedback baseado em tempo real */}
+                {!hasRequestedVoteRealTime ? (
+                  <Button
+                    onClick={handleRequestVote}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white"
+                    disabled={isStarting || gameStatus !== "playing"}
+                  >
+                    <Vote className="h-4 w-4 mr-2" />
+                    Sugerir Votação
+                  </Button>
                 ) : (
-                  <div className="text-center space-y-2">
+                  <div className="text-center space-y-2 py-2">
                     <p className="text-white font-semibold">Você já pediu votação</p>
                     <p className="text-sm text-gray-400">
-                      Aguardando mais {requiredVotes - voteRequestsCount} jogador{requiredVotes - voteRequestsCount > 1 ? 'es' : ''}...
+                      {voteRequestsCount < requiredVotes ? (
+                        <>Aguardando mais {requiredVotes - voteRequestsCount} jogador{requiredVotes - voteRequestsCount > 1 ? 'es' : ''}...</>
+                      ) : (
+                        <>Votação será iniciada em breve...</>
+                      )}
                     </p>
                   </div>
                 )}

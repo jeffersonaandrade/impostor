@@ -71,10 +71,14 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
     }
     
     // 4. Mapeamento 1:1 - Atribuir roles[index] para cada jogador
-    let playersWithRoles = players.map((player: any, index: number) => ({
-      ...player,
-      role: roles[index],
-    }));
+    // FORÇAR ATRIBUIÇÃO: garantir que o role seja sempre sobrescrito
+    let playersWithRoles = players.map((player: any, index: number) => {
+      const { role: _, ...playerWithoutRole } = player; // Remover role anterior se existir
+      return {
+        ...playerWithoutRole,
+        role: roles[index], // Garantir que isso aqui está sobrescrevendo qualquer valor anterior
+      };
+    });
     
     // 5. Validação de Segurança (Safety Check) - ANTES de salvar no Firestore
     let contagemImpostores = playersWithRoles.filter((p: any) => p.role === "impostor").length;
@@ -83,17 +87,26 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       // Correção manual: garantir que a contagem esteja correta
       console.error(`ERRO CRÍTICO: Contagem de impostores incorreta! Solicitado: ${numImpostors}, Gerado: ${contagemImpostores}`);
       
-      // Forçar correção: definir os primeiros N jogadores como impostor e resto como cidadão
-      const playersCorrected = players.map((player: any, index: number) => ({
-        ...player,
-        role: index < numImpostors ? "impostor" : "citizen",
-      }));
-      
-      // Embaralhar novamente após correção usando Fisher-Yates
-      for (let i = playersCorrected.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [playersCorrected[i], playersCorrected[j]] = [playersCorrected[j], playersCorrected[i]];
+      // Forçar correção: criar novo array de roles e embaralhar
+      const correctedRoles: ("impostor" | "citizen")[] = new Array(totalPlayers);
+      for (let i = 0; i < totalPlayers; i++) {
+        correctedRoles[i] = i < numImpostors ? "impostor" : "citizen";
       }
+      
+      // Embaralhar os roles usando Fisher-Yates
+      for (let i = correctedRoles.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [correctedRoles[i], correctedRoles[j]] = [correctedRoles[j], correctedRoles[i]];
+      }
+      
+      // Atribuir roles corrigidos aos jogadores
+      const playersCorrected = players.map((player: any, index: number) => {
+        const { role: _, ...playerWithoutRole } = player; // Remover role anterior
+        return {
+          ...playerWithoutRole,
+          role: correctedRoles[index], // FORÇAR atribuição do role correto
+        };
+      });
       
       // Re-validar após correção
       contagemImpostores = playersCorrected.filter((p: any) => p.role === "impostor").length;

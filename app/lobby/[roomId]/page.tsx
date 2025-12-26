@@ -416,6 +416,29 @@ export default function LobbyPage() {
                 )}
               </div>
 
+              {/* Seletor de Chances de Erro (Vidas) */}
+              <div className="space-y-2">
+                <label className="text-sm text-gray-400">
+                  Chances de Erro (Vidas)
+                </label>
+                <div className="flex gap-2">
+                  {[1, 2, 3].map((num) => (
+                    <Button
+                      key={num}
+                      onClick={() => setMaxGuesses(num)}
+                      variant={maxGuesses === num ? "default" : "outline"}
+                      className={`flex-1 ${
+                        maxGuesses === num
+                          ? "bg-red-600 hover:bg-red-700 text-white"
+                          : "border-gray-700 text-white hover:bg-gray-900 hover:text-white"
+                      }`}
+                    >
+                      {num}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
               <Button
                 onClick={handleStartGame}
                 className={`w-full bg-red-600 hover:bg-red-700 text-white ${
