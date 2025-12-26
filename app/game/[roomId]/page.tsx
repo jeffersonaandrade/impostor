@@ -27,6 +27,7 @@ export default function GamePage() {
   const [selectedVoteTarget, setSelectedVoteTarget] = useState<string | null>(null);
   const [hasRequestedVote, setHasRequestedVote] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
+  const [isForcingVote, setIsForcingVote] = useState(false);
 
   const { setCurrentPlayer: setStorePlayer, setSecretWord, setCategory, setTheme } = useGameStore();
 
@@ -168,8 +169,9 @@ export default function GamePage() {
 
   const handleForceEndVoting = async () => {
     const playerId = localStorage.getItem(`player_${roomId}`);
-    if (!playerId) return;
+    if (!playerId || isForcingVote) return;
     
+    setIsForcingVote(true);
     try {
       await forceEndVoting(roomId, playerId);
       setToastMessage("Votação encerrada pelo Host");
@@ -177,6 +179,8 @@ export default function GamePage() {
     } catch (error: any) {
       setToastMessage(error.message || "Erro ao forçar fim da votação");
       setShowToast(true);
+    } finally {
+      setIsForcingVote(false);
     }
   };
 
@@ -409,7 +413,7 @@ export default function GamePage() {
         </Card>
       </div>
 
-      {/* Fase de Votação */}
+      {/* Fase de Votação - Para jogadores vivos */}
       {gameStatus === "voting" && isAlive && (
         <div className="w-full max-w-md space-y-4 mt-20">
           <Card className="bg-[#0a0a0a] border-gray-800">
@@ -452,16 +456,27 @@ export default function GamePage() {
                   Aguardando outros jogadores votarem...
                 </p>
               )}
-              {/* Botão para Host forçar fim da votação */}
-              {isHost && (
-                <Button
-                  onClick={handleForceEndVoting}
-                  variant="outline"
-                  className="w-full border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400 mt-4"
-                >
-                  Encerrar Votação (Forçar)
-                </Button>
-              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Botão para Host forçar fim da votação - SEMPRE visível quando status === 'voting' */}
+      {gameStatus === "voting" && isHost && (
+        <div className="w-full max-w-md space-y-4 mt-20">
+          <Card className="bg-[#0a0a0a] border-orange-800">
+            <CardContent className="p-4">
+              <Button
+                onClick={handleForceEndVoting}
+                variant="outline"
+                className="w-full border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
+                disabled={isForcingVote}
+              >
+                {isForcingVote ? "Encerrando..." : "Encerrar Votação (Forçar)"}
+              </Button>
+              <p className="text-xs text-gray-500 text-center mt-2">
+                Controle do Host - Disponível mesmo se eliminado
+              </p>
             </CardContent>
           </Card>
         </div>
