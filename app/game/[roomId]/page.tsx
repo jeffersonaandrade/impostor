@@ -555,7 +555,7 @@ export default function GamePage() {
                   <Button
                     onClick={handleRequestVote}
                     className="w-full bg-red-600 hover:bg-red-700 text-white"
-                    disabled={isStarting || gameStatus !== "playing"}
+                    disabled={gameStatus !== "playing"}
                   >
                     <Vote className="h-4 w-4 mr-2" />
                     Sugerir Votação
