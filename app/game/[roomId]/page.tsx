@@ -269,6 +269,8 @@ export default function GamePage() {
     
     // Formatar nomes dos impostores
     let impostorsNames = "";
+    const isPlural = impostors.length > 1;
+    
     if (impostors.length === 1) {
       impostorsNames = impostors[0].name;
     } else if (impostors.length === 2) {
@@ -300,7 +302,7 @@ export default function GamePage() {
               <CardContent className="p-0">
                 <div className="relative w-full h-64 md:h-80">
                   <Image
-                    src="/citizens-win.jpg"
+                    src="/citizens-win.png"
                     alt="Vitória dos Cidadãos"
                     fill
                     className="object-cover rounded-t-lg"
@@ -314,7 +316,7 @@ export default function GamePage() {
                   <p className="text-gray-300 text-lg md:text-xl leading-relaxed">
                     Os cidadãos desmascararam a farsa.{" "}
                     <span className="font-bold text-white">{impostorsNames}</span>{" "}
-                    não conseguiram enganar a todos.
+                    {isPlural ? "não conseguiram enganar" : "não conseguiu enganar"} a todos.
                   </p>
                 </div>
               </CardContent>
@@ -325,7 +327,7 @@ export default function GamePage() {
               <CardContent className="p-0">
                 <div className="relative w-full h-64 md:h-80">
                   <Image
-                    src="/impostor-win.jpg"
+                    src="/impostor-win.png"
                     alt="Vitória dos Impostores"
                     fill
                     className="object-cover rounded-t-lg"
@@ -339,7 +341,7 @@ export default function GamePage() {
                   <p className="text-gray-300 text-lg md:text-xl leading-relaxed">
                     A cidade dorme enganada.{" "}
                     <span className="font-bold text-white">{impostorsNames}</span>{" "}
-                    desapareceram na neblina da noite...
+                    {isPlural ? "desapareceram" : "desapareceu"} na neblina da noite...
                   </p>
                 </div>
               </CardContent>

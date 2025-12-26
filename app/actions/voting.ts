@@ -154,13 +154,34 @@ async function resolveVoting(roomRef: any, roomData: any, votes: any) {
 
   // Verificar se é impostor ou cidadão
   if (mostVotedPlayer.role === "impostor") {
-    // VITÓRIA DOS CIDADÃOS
-    await updateDoc(roomRef, {
-      status: "finished",
-      winner: "citizens",
-      votes,
-      voteRequests: [],
-    });
+    // ELIMINARAM UM IMPOSTOR
+    const updatedDeadPlayerIds = [...deadPlayerIds, mostVotedId];
+    
+    // Verificar quantos impostores ainda estão vivos
+    const aliveImpostors = players.filter((p: any) => 
+      p.role === "impostor" && !updatedDeadPlayerIds.includes(p.id)
+    );
+    
+    if (aliveImpostors.length === 0) {
+      // TODOS OS IMPOSTORES FORAM ELIMINADOS - VITÓRIA DOS CIDADÃOS
+      await updateDoc(roomRef, {
+        status: "finished",
+        winner: "citizens",
+        deadPlayerIds: updatedDeadPlayerIds,
+        votes,
+        voteRequests: [],
+      });
+    } else {
+      // AINDA HÁ IMPOSTORES VIVOS - O JOGO CONTINUA
+      const eliminatedPlayer = players.find((p: any) => p.id === mostVotedId);
+      await updateDoc(roomRef, {
+        status: "playing",
+        deadPlayerIds: updatedDeadPlayerIds,
+        votes: {},
+        voteRequests: [],
+        lastEliminationMessage: `Vocês eliminaram um Impostor! Mas cuidado, ainda restam ${aliveImpostors.length} na cidade.`,
+      });
+    }
   } else {
     // ERRO: Votaram num inocente
     const updatedDeadPlayerIds = [...deadPlayerIds, mostVotedId];
