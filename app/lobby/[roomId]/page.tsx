@@ -20,6 +20,7 @@ export default function LobbyPage() {
   const [hasJoined, setHasJoined] = useState(false);
   const [theme, setTheme] = useState("");
   const [numImpostors, setNumImpostors] = useState(1);
+  const [maxGuesses, setMaxGuesses] = useState(1);
   const [isHost, setIsHost] = useState(false);
   const [players, setPlayers] = useState<any[]>([]);
   const [gameData, setGameData] = useState<any>(null);
@@ -165,7 +166,7 @@ export default function LobbyPage() {
     
     setIsStarting(true);
     try {
-      await startGame(roomId, theme, numImpostors);
+      await startGame(roomId, theme, numImpostors, maxGuesses);
       // Não resetar isStarting aqui - o useEffect vai redirecionar quando status mudar
     } catch (error: any) {
       console.error("Erro ao iniciar jogo:", error);
@@ -417,14 +418,18 @@ export default function LobbyPage() {
 
               <Button
                 onClick={handleStartGame}
-                className="w-full bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full bg-red-600 hover:bg-red-700 text-white ${
+                  players.length < 3 || isStarting || numImpostors > players.length - 1
+                    ? "opacity-50 cursor-not-allowed"
+                    : ""
+                }`}
                 disabled={players.length < 3 || isStarting || numImpostors > players.length - 1}
               >
                 {isStarting ? "Iniciando..." : "Iniciar Jogo"}
               </Button>
               {players.length < 3 && (
                 <p className="text-sm text-gray-500 text-center">
-                  Aguardando mais jogadores (Mínimo: 3)
+                  Mínimo de 3 jogadores para iniciar
                 </p>
               )}
             </CardContent>

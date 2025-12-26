@@ -1,11 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc, runTransaction } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { generateSecretWord } from "@/lib/groq";
 
-export async function startGame(roomId: string, theme: string, numImpostors: number = 1) {
+export async function startGame(roomId: string, theme: string, numImpostors: number = 1, maxGuesses: number = 1) {
   try {
     const roomRef = doc(db, "rooms", roomId);
     const roomSnap = await getDoc(roomRef);
@@ -17,8 +17,9 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
     const roomData = roomSnap.data();
     const players = roomData?.players || [];
     
+    // Validação de segurança: mínimo de 3 jogadores
     if (players.length < 3) {
-      throw new Error("Mínimo de 3 jogadores necessário");
+      throw new Error("É necessário ter no mínimo 3 jogadores para iniciar.");
     }
 
     // Validação: não permitir mais impostores do que jogadores - 1
@@ -121,6 +122,12 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       secretWord: secret_word,
       category,
       numImpostors,
+      maxGuesses,
+      wrongGuesses: 0,
+      deadPlayerIds: [],
+      voteRequests: [],
+      votes: {},
+      winner: null,
       players: playersWithRoles,
       usedWords: updatedUsedWords,
       startedAt: new Date().toISOString(),
@@ -140,38 +147,52 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
 export async function removePlayer(roomId: string, playerIdToRemove: string) {
   try {
     const roomRef = doc(db, "rooms", roomId);
-    const roomSnap = await getDoc(roomRef);
-
-    if (!roomSnap.exists()) {
-      throw new Error("Sala não encontrada");
-    }
-
-    const roomData = roomSnap.data();
     
-    // Não permitir remover se o jogo já começou
-    if (roomData?.gameStarted || roomData?.status === "playing") {
-      throw new Error("Não é possível remover jogadores durante o jogo");
-    }
+    // Usar transaction para garantir consistência
+    await runTransaction(db, async (transaction) => {
+      const roomSnap = await transaction.get(roomRef);
 
-    const players = roomData?.players || [];
-    
-    // Filtrar o jogador a ser removido
-    const updatedPlayers = players.filter((player: any) => player.id !== playerIdToRemove);
+      if (!roomSnap.exists()) {
+        throw new Error("Sala não encontrada");
+      }
 
-    // Se o jogador removido era o host, definir o primeiro jogador restante como host
-    let hostId = roomData?.hostId;
-    if (hostId === playerIdToRemove && updatedPlayers.length > 0) {
-      hostId = updatedPlayers[0].id;
-      // Atualizar o flag isHost nos jogadores
-      updatedPlayers.forEach((player: any, index: number) => {
-        player.isHost = index === 0;
+      const roomData = roomSnap.data();
+      
+      // Não permitir remover se o jogo já começou
+      if (roomData?.gameStarted || roomData?.status === "playing") {
+        throw new Error("Não é possível remover jogadores durante o jogo");
+      }
+
+      const players = roomData?.players || [];
+      
+      // 1. Filtrar o jogador a ser removido
+      const novosJogadores = players.filter((player: any) => player.id !== playerIdToRemove);
+
+      // 2. Verificação de Sala Vazia (CRÍTICO)
+      if (novosJogadores.length === 0) {
+        // Sala vazia: deletar o documento inteiro
+        transaction.delete(roomRef);
+        console.log(`[CLEANUP] Sala ${roomId} deletada automaticamente (sem jogadores)`);
+        return; // Não fazer update
+      }
+
+      // 3. Caso Sobrem Jogadores: atualizar normalmente
+      let hostId = roomData?.hostId;
+      
+      // Se o jogador removido era o Host, passar liderança para o primeiro jogador restante
+      if (hostId === playerIdToRemove) {
+        hostId = novosJogadores[0].id;
+        // Atualizar o flag isHost nos jogadores
+        novosJogadores.forEach((player: any, index: number) => {
+          player.isHost = index === 0;
+        });
+      }
+
+      // Atualizar sala removendo o jogador
+      transaction.update(roomRef, {
+        players: novosJogadores,
+        hostId: hostId,
       });
-    }
-
-    // Atualizar sala removendo o jogador
-    await updateDoc(roomRef, {
-      players: updatedPlayers,
-      hostId: hostId,
     });
 
     return { success: true };
@@ -208,6 +229,15 @@ export async function resetGame(roomId: string) {
       category: null,
       players: playersWithoutRoles,
       startedAt: null,
+      // Limpar campos de votação e jogo
+      deadPlayerIds: [],
+      wrongGuesses: 0,
+      voteRequests: [],
+      votes: {},
+      winner: null,
+      lastEliminationMessage: null,
+      numImpostors: null,
+      maxGuesses: null,
     });
 
     return { success: true };

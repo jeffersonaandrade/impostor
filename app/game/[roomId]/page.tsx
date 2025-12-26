@@ -7,9 +7,11 @@ import { db } from "@/lib/firebase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Toast } from "@/components/ui/toast";
-import { AlertTriangle, LogOut } from "lucide-react";
+import { AlertTriangle, LogOut, Users, Vote } from "lucide-react";
 import { useGameStore } from "@/lib/store";
 import { resetGame, removePlayer } from "@/app/actions/game";
+import { requestVote, submitVote, forceEndVoting } from "@/app/actions/voting";
+import Image from "next/image";
 
 export default function GamePage() {
   const params = useParams();
@@ -22,6 +24,9 @@ export default function GamePage() {
   const [isResetting, setIsResetting] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [selectedVoteTarget, setSelectedVoteTarget] = useState<string | null>(null);
+  const [hasRequestedVote, setHasRequestedVote] = useState(false);
+  const [hasVoted, setHasVoted] = useState(false);
 
   const { setCurrentPlayer: setStorePlayer, setSecretWord, setCategory, setTheme } = useGameStore();
 
@@ -51,6 +56,23 @@ export default function GamePage() {
           setSecretWord(data.secretWord || null);
           setCategory(data.category || null);
           setTheme(data.theme || null);
+          
+          // Verificar se já pediu votação
+          setHasRequestedVote((data.voteRequests || []).includes(playerId));
+          
+          // Verificar se já votou
+          setHasVoted(!!data.votes?.[playerId]);
+          
+          // Mostrar mensagem de eliminação se houver
+          if (data.lastEliminationMessage) {
+            setToastMessage(data.lastEliminationMessage);
+            setShowToast(true);
+          }
+          
+          // Verificar se o jogo terminou
+          if (data.status === "finished") {
+            setIsLoading(false);
+          }
         } else {
           // Sessão expirada: playerId existe no localStorage mas não está mais na sala
           console.log("Sessão expirada: jogador não encontrado na sala");
@@ -112,7 +134,76 @@ export default function GamePage() {
     }
   };
 
+  const handleRequestVote = async () => {
+    const playerId = localStorage.getItem(`player_${roomId}`);
+    if (!playerId) return;
+    
+    try {
+      await requestVote(roomId, playerId);
+      setHasRequestedVote(true);
+      setToastMessage("Votação solicitada!");
+      setShowToast(true);
+    } catch (error: any) {
+      setToastMessage(error.message || "Erro ao solicitar votação");
+      setShowToast(true);
+    }
+  };
+
+  const handleSubmitVote = async () => {
+    if (!selectedVoteTarget) return;
+    
+    const playerId = localStorage.getItem(`player_${roomId}`);
+    if (!playerId) return;
+    
+    try {
+      await submitVote(roomId, playerId, selectedVoteTarget);
+      setHasVoted(true);
+      setToastMessage("Voto registrado!");
+      setShowToast(true);
+    } catch (error: any) {
+      setToastMessage(error.message || "Erro ao votar");
+      setShowToast(true);
+    }
+  };
+
+  const handleForceEndVoting = async () => {
+    const playerId = localStorage.getItem(`player_${roomId}`);
+    if (!playerId) return;
+    
+    try {
+      await forceEndVoting(roomId, playerId);
+      setToastMessage("Votação encerrada pelo Host");
+      setShowToast(true);
+    } catch (error: any) {
+      setToastMessage(error.message || "Erro ao forçar fim da votação");
+      setShowToast(true);
+    }
+  };
+
   const isHost = currentPlayer?.isHost || false;
+  
+  // Calcular jogadores vivos e eliminados
+  const deadPlayerIds = gameData?.deadPlayerIds || [];
+  const alivePlayers = (gameData?.players || []).filter((p: any) => !deadPlayerIds.includes(p.id));
+  const deadPlayers = (gameData?.players || []).filter((p: any) => deadPlayerIds.includes(p.id));
+  
+  // Tentativas restantes
+  const maxGuesses = gameData?.maxGuesses || 1;
+  const wrongGuesses = gameData?.wrongGuesses || 0;
+  const remainingGuesses = maxGuesses - wrongGuesses;
+  
+  // Status do jogo
+  const gameStatus = gameData?.status || "playing";
+  const winner = gameData?.winner;
+  
+  // Verificar se o jogador atual está vivo
+  const playerId = localStorage.getItem(`player_${roomId}`);
+  const isAlive = playerId && !deadPlayerIds.includes(playerId);
+  
+  // Contar votos de pedido
+  const voteRequests = gameData?.voteRequests || [];
+  const requiredVotes = Math.ceil(alivePlayers.length / 2);
+  const voteRequestsCount = voteRequests.length;
 
   if (isLoading) {
     return (
@@ -166,6 +257,115 @@ export default function GamePage() {
     );
   }
 
+  // Tela de Fim de Jogo
+  if (gameStatus === "finished") {
+    // Recuperar nomes dos impostores
+    const players = gameData?.players || [];
+    const impostors = players.filter((p: any) => p.role === "impostor");
+    
+    // Formatar nomes dos impostores
+    let impostorsNames = "";
+    if (impostors.length === 1) {
+      impostorsNames = impostors[0].name;
+    } else if (impostors.length === 2) {
+      impostorsNames = `${impostors[0].name} e ${impostors[1].name}`;
+    } else {
+      const names = impostors.map((p: any) => p.name);
+      const last = names.pop();
+      impostorsNames = `${names.join(", ")} e ${last}`;
+    }
+
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 relative">
+        <div className="absolute top-4 right-4">
+          <Button
+            onClick={handleLeaveRoom}
+            variant="ghost"
+            size="sm"
+            className="text-gray-400 hover:text-white hover:bg-gray-900"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sair
+          </Button>
+        </div>
+        
+        <div className="w-full max-w-2xl space-y-6">
+          {winner === "citizens" ? (
+            // VITÓRIA DOS CIDADÃOS
+            <Card className="bg-[#0a0a0a] border-gray-300 border-2">
+              <CardContent className="p-0">
+                <div className="relative w-full h-64 md:h-80">
+                  <Image
+                    src="/citizens-win.jpg"
+                    alt="Vitória dos Cidadãos"
+                    fill
+                    className="object-cover rounded-t-lg"
+                    priority
+                  />
+                </div>
+                <div className="p-8 text-center space-y-6">
+                  <h2 className="text-4xl md:text-5xl font-bold text-white">
+                    A JUSTIÇA PREVALECEU!
+                  </h2>
+                  <p className="text-gray-300 text-lg md:text-xl leading-relaxed">
+                    Os cidadãos desmascararam a farsa.{" "}
+                    <span className="font-bold text-white">{impostorsNames}</span>{" "}
+                    não conseguiram enganar a todos.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            // VITÓRIA DOS IMPOSTORES
+            <Card className="bg-[#0a0a0a] border-red-600 border-2">
+              <CardContent className="p-0">
+                <div className="relative w-full h-64 md:h-80">
+                  <Image
+                    src="/impostor-win.jpg"
+                    alt="Vitória dos Impostores"
+                    fill
+                    className="object-cover rounded-t-lg"
+                    priority
+                  />
+                </div>
+                <div className="p-8 text-center space-y-6">
+                  <h2 className="text-4xl md:text-5xl font-bold text-red-500">
+                    AS SOMBRAS VENCERAM.
+                  </h2>
+                  <p className="text-gray-300 text-lg md:text-xl leading-relaxed">
+                    A cidade dorme enganada.{" "}
+                    <span className="font-bold text-white">{impostorsNames}</span>{" "}
+                    desapareceram na neblina da noite...
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Botões de ação */}
+          <div className="space-y-3">
+            {isHost && (
+              <Button
+                onClick={handleResetGame}
+                disabled={isResetting}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold text-lg py-6"
+              >
+                {isResetting ? "Reiniciando..." : "Jogar Novamente"}
+              </Button>
+            )}
+            <Button
+              onClick={handleLeaveRoom}
+              variant="outline"
+              className="w-full border-gray-700 text-gray-300 hover:bg-gray-900 hover:text-white"
+            >
+              Sair da Sala
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 pb-32 relative">
       {/* Botão Sair - Canto superior direito */}
@@ -181,7 +381,88 @@ export default function GamePage() {
           Sair
         </Button>
       </div>
-      {!revealed ? (
+
+      {/* Header com Tentativas Restantes */}
+      <div className="absolute top-4 left-4 right-20">
+        <Card className="bg-[#0a0a0a] border-gray-800">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-gray-400" />
+                <span className="text-white text-sm">
+                  Tentativas Restantes: <span className={`font-bold ${remainingGuesses > 0 ? 'text-red-500' : 'text-gray-500'}`}>{remainingGuesses}</span>
+                </span>
+              </div>
+              {deadPlayers.length > 0 && (
+                <div className="text-xs text-gray-500">
+                  Eliminados: {deadPlayers.map((p: any) => p.name).join(", ")}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Fase de Votação */}
+      {gameStatus === "voting" && isAlive && (
+        <div className="w-full max-w-md space-y-4 mt-20">
+          <Card className="bg-[#0a0a0a] border-gray-800">
+            <CardContent className="p-6 space-y-4">
+              <h3 className="text-xl font-bold text-white text-center">Votação em Andamento</h3>
+              <p className="text-gray-400 text-sm text-center">
+                Escolha quem você acha que é o impostor
+              </p>
+              <div className="space-y-2">
+                {alivePlayers.map((player: any) => {
+                  if (player.id === playerId) return null; // Não pode votar em si mesmo
+                  return (
+                    <Button
+                      key={player.id}
+                      onClick={() => setSelectedVoteTarget(player.id)}
+                      variant={selectedVoteTarget === player.id ? "default" : "outline"}
+                      className={`w-full ${
+                        selectedVoteTarget === player.id
+                          ? "bg-red-600 hover:bg-red-700 text-white"
+                          : "border-gray-700 text-white hover:bg-gray-900"
+                      }`}
+                      disabled={hasVoted}
+                    >
+                      {player.name}
+                    </Button>
+                  );
+                })}
+              </div>
+              {!hasVoted && (
+                <Button
+                  onClick={handleSubmitVote}
+                  disabled={!selectedVoteTarget}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white"
+                >
+                  Confirmar Voto
+                </Button>
+              )}
+              {hasVoted && (
+                <p className="text-center text-gray-400 text-sm">
+                  Aguardando outros jogadores votarem...
+                </p>
+              )}
+              {/* Botão para Host forçar fim da votação */}
+              {isHost && (
+                <Button
+                  onClick={handleForceEndVoting}
+                  variant="outline"
+                  className="w-full border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400 mt-4"
+                >
+                  Encerrar Votação (Forçar)
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Fase de Jogo Normal - Revelação de Carta */}
+      {gameStatus === "playing" && !revealed && (
         <Card
           onClick={handleReveal}
           className="w-full max-w-md bg-[#0a0a0a] border-gray-800 cursor-pointer hover:border-red-600 transition-all h-96 flex items-center justify-center"
@@ -198,8 +479,11 @@ export default function GamePage() {
             </div>
           </CardContent>
         </Card>
-      ) : (
-        <div className="w-full max-w-md space-y-6">
+      )}
+
+      {/* Após revelar carta - Mostrar informações e botão de votação */}
+      {gameStatus === "playing" && revealed && (
+        <div className="w-full max-w-md space-y-6 mt-20">
           {currentPlayer.role === "impostor" ? (
             <Card className="bg-red-950 border-red-800 border-2">
               <CardContent className="p-8 text-center space-y-6">
@@ -247,6 +531,46 @@ export default function GamePage() {
                     Categoria: <span className="font-semibold text-white">{gameData?.category}</span>
                   </p>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Botão de Sugerir Votação - Apenas para jogadores vivos */}
+          {gameStatus === "playing" && isAlive && revealed && (
+            <Card className="bg-[#0a0a0a] border-gray-800">
+              <CardContent className="p-4 space-y-3">
+                {!hasRequestedVote ? (
+                  <>
+                    <Button
+                      onClick={handleRequestVote}
+                      className="w-full bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      <Vote className="h-4 w-4 mr-2" />
+                      Sugerir Votação
+                    </Button>
+                    <p className="text-xs text-gray-500 text-center">
+                      {voteRequestsCount}/{requiredVotes} jogadores pediram votação
+                    </p>
+                  </>
+                ) : (
+                  <div className="text-center space-y-2">
+                    <p className="text-white font-semibold">Você já pediu votação</p>
+                    <p className="text-sm text-gray-400">
+                      Aguardando mais {requiredVotes - voteRequestsCount} jogador{requiredVotes - voteRequestsCount > 1 ? 'es' : ''}...
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mensagem para jogadores eliminados */}
+          {!isAlive && (
+            <Card className="bg-gray-900 border-gray-700">
+              <CardContent className="p-4 text-center">
+                <p className="text-gray-400">
+                  Você foi eliminado. O jogo continua sem você.
+                </p>
               </CardContent>
             </Card>
           )}
