@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Toast } from "@/components/ui/toast";
 import { AlertTriangle, LogOut, Users, Vote } from "lucide-react";
 import { useGameStore } from "@/lib/store";
-import { resetGame, removePlayer } from "@/app/actions/game";
+import { resetGame, removePlayer, sendHeartbeat } from "@/app/actions/game";
 import { requestVote, submitVote, forceEndVoting } from "@/app/actions/voting";
 import Image from "next/image";
 
@@ -28,6 +28,8 @@ export default function GamePage() {
   const [hasRequestedVote, setHasRequestedVote] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const [isForcingVote, setIsForcingVote] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(true); // Grace period para sincronização
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { setCurrentPlayer: setStorePlayer, setSecretWord, setCategory, setTheme } = useGameStore();
 
@@ -38,11 +40,28 @@ export default function GamePage() {
       return;
     }
 
+    // Grace Period: Aguardar 3 segundos antes de considerar sessão expirada
+    setIsSyncing(true);
+    syncTimeoutRef.current = setTimeout(() => {
+      setIsSyncing(false);
+    }, 3000); // 3 segundos de grace period
+
     const roomRef = doc(db, "rooms", roomId);
     const unsubscribe = onSnapshot(roomRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         setGameData(data);
+        
+        // Verificar se o jogo foi abortado
+        if (data.status === "aborted") {
+          setToastMessage(data.abortedReason || "Jogo abortado: jogadores insuficientes");
+          setShowToast(true);
+          // Redirecionar para lobby após mostrar mensagem
+          setTimeout(() => {
+            router.push(`/lobby/${roomId}`);
+          }, 3000);
+          return;
+        }
         
         // Verificar se o jogo foi resetado (status voltou para waiting ou gameStarted = false)
         if (!data.gameStarted || data.status === "waiting") {
@@ -57,6 +76,12 @@ export default function GamePage() {
           setSecretWord(data.secretWord || null);
           setCategory(data.category || null);
           setTheme(data.theme || null);
+          
+          setIsSyncing(false); // Sincronização bem-sucedida
+          if (syncTimeoutRef.current) {
+            clearTimeout(syncTimeoutRef.current);
+            syncTimeoutRef.current = null;
+          }
           
           // Verificar se já pediu votação
           setHasRequestedVote((data.voteRequests || []).includes(playerId));
@@ -76,10 +101,17 @@ export default function GamePage() {
           }
         } else {
           // Sessão expirada: playerId existe no localStorage mas não está mais na sala
-          console.log("Sessão expirada: jogador não encontrado na sala");
-          localStorage.removeItem(`player_${roomId}`);
-          router.push(`/join/${roomId}`);
-          return;
+          // MAS só executar se já passou o grace period (não está sincronizando)
+          // Usar uma verificação com timeout para evitar race condition
+          setTimeout(() => {
+            // Verificar novamente após um pequeno delay
+            const stillSyncing = syncTimeoutRef.current !== null;
+            if (!stillSyncing) {
+              console.log("Sessão expirada: jogador não encontrado na sala");
+              localStorage.removeItem(`player_${roomId}`);
+              router.push(`/join/${roomId}`);
+            }
+          }, 100);
         }
 
         // Fake loading de 2 segundos para aumentar tensão
@@ -89,8 +121,29 @@ export default function GamePage() {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
   }, [roomId, router, setStorePlayer, setSecretWord, setCategory, setTheme]);
+
+  // Sistema de Heartbeat - Enviar a cada 5 segundos
+  useEffect(() => {
+    const playerId = localStorage.getItem(`player_${roomId}`);
+    if (!playerId || !currentPlayer) return;
+
+    const heartbeatInterval = setInterval(async () => {
+      try {
+        await sendHeartbeat(roomId, playerId);
+      } catch (error) {
+        console.error("Erro ao enviar heartbeat:", error);
+      }
+    }, 5000); // 5 segundos
+
+    return () => clearInterval(heartbeatInterval);
+  }, [roomId, currentPlayer]);
 
   const handleReveal = () => {
     setRevealed(true);

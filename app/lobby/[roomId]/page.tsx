@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, onSnapshot, setDoc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -11,7 +11,7 @@ import { Toast } from "@/components/ui/toast";
 import { Copy, MessageCircle, Clock, X, LogOut, QrCode } from "lucide-react";
 import QRCodeSVG from "react-qr-code";
 import { useGameStore } from "@/lib/store";
-import { startGame, removePlayer } from "@/app/actions/game";
+import { startGame, removePlayer, sendHeartbeat } from "@/app/actions/game";
 
 export default function LobbyPage() {
   const params = useParams();
@@ -33,6 +33,8 @@ export default function LobbyPage() {
   const [hostName, setHostName] = useState<string>("");
   const [showQRCode, setShowQRCode] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
+  const [isSyncing, setIsSyncing] = useState(true); // Grace period para sincronização
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { setRoomId, setCurrentPlayer, setTheme: setStoreTheme } = useGameStore();
 
@@ -70,6 +72,12 @@ export default function LobbyPage() {
       setHasJoined(true);
     }
 
+    // Grace Period: Aguardar 3 segundos antes de considerar sessão expirada
+    setIsSyncing(true);
+    syncTimeoutRef.current = setTimeout(() => {
+      setIsSyncing(false);
+    }, 3000); // 3 segundos de grace period
+
     // Escutar mudanças na sala
     const unsubscribe = onSnapshot(roomRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -77,6 +85,12 @@ export default function LobbyPage() {
         setGameData(data);
         const roomPlayers = data.players || [];
         setPlayers(roomPlayers);
+        
+        // Verificar se o jogo foi abortado
+        if (data.status === "aborted") {
+          setToastMessage(data.abortedReason || "Jogo abortado: jogadores insuficientes");
+          setShowToast(true);
+        }
         
         // Identificar o host
         const host = roomPlayers.find((p: any) => p.id === data.hostId);
@@ -89,6 +103,11 @@ export default function LobbyPage() {
           const currentPlayer = roomPlayers.find((p: any) => p.id === playerId);
           if (currentPlayer) {
             setHasJoined(true);
+            setIsSyncing(false); // Sincronização bem-sucedida
+            if (syncTimeoutRef.current) {
+              clearTimeout(syncTimeoutRef.current);
+              syncTimeoutRef.current = null;
+            }
             // Verificar se o usuário atual é o host
             if (playerId === data.hostId) {
               setIsHost(true);
@@ -97,10 +116,17 @@ export default function LobbyPage() {
             }
           } else {
             // Sessão expirada: playerId existe no localStorage mas não está mais na sala
-            console.log("Sessão expirada: jogador não encontrado na sala");
-            localStorage.removeItem(`player_${roomId}`);
-            router.push(`/join/${roomId}`);
-            return;
+            // MAS só executar se já passou o grace period (não está sincronizando)
+            // Usar uma verificação com timeout para evitar race condition
+            setTimeout(() => {
+              // Verificar novamente após um pequeno delay
+              const stillSyncing = syncTimeoutRef.current !== null;
+              if (!stillSyncing) {
+                console.log("Sessão expirada: jogador não encontrado na sala");
+                localStorage.removeItem(`player_${roomId}`);
+                router.push(`/join/${roomId}`);
+              }
+            }, 100);
           }
         }
         
@@ -119,8 +145,28 @@ export default function LobbyPage() {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
   }, [roomId, router, setRoomId, setCurrentPlayer, setStoreTheme]);
+
+  // Sistema de Heartbeat - Enviar a cada 5 segundos
+  useEffect(() => {
+    if (!currentPlayerId || !hasJoined) return;
+
+    const heartbeatInterval = setInterval(async () => {
+      try {
+        await sendHeartbeat(roomId, currentPlayerId);
+      } catch (error) {
+        console.error("Erro ao enviar heartbeat:", error);
+      }
+    }, 5000); // 5 segundos
+
+    return () => clearInterval(heartbeatInterval);
+  }, [roomId, currentPlayerId, hasJoined]);
 
   const handleJoin = async () => {
     if (!playerName.trim()) return;
@@ -130,12 +176,13 @@ export default function LobbyPage() {
 
     const roomRef = doc(db, "rooms", roomId);
     const roomSnap = await getDoc(roomRef);
+    const now = Date.now();
     
     if (!roomSnap.exists()) {
       // Criar sala
         await setDoc(roomRef, {
           id: roomId,
-          players: [{ id: playerId, name: playerName, isHost: true }],
+          players: [{ id: playerId, name: playerName, isHost: true, lastHeartbeat: now }],
           hostId: playerId,
           gameStarted: false,
           status: "waiting",
@@ -149,7 +196,7 @@ export default function LobbyPage() {
       const isFirstPlayer = currentPlayers.length === 0;
       
       await updateDoc(roomRef, {
-        players: [...currentPlayers, { id: playerId, name: playerName, isHost: isFirstPlayer }],
+        players: [...currentPlayers, { id: playerId, name: playerName, isHost: isFirstPlayer, lastHeartbeat: now }],
         hostId: isFirstPlayer ? playerId : roomSnap.data()?.hostId,
       });
       setIsHost(isFirstPlayer);

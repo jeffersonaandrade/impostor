@@ -39,11 +39,13 @@ export default function JoinPage() {
       const roomRef = doc(db, "rooms", roomId);
       const roomSnap = await getDoc(roomRef);
 
+      const now = Date.now();
+      
       if (!roomSnap.exists()) {
         // Criar sala se não existir
         await setDoc(roomRef, {
           id: roomId,
-          players: [{ id: playerId, name: playerName, isHost: true }],
+          players: [{ id: playerId, name: playerName, isHost: true, lastHeartbeat: now }],
           hostId: playerId,
           gameStarted: false,
           status: "waiting",
@@ -56,7 +58,7 @@ export default function JoinPage() {
         const isFirstPlayer = currentPlayers.length === 0;
 
         await updateDoc(roomRef, {
-          players: [...currentPlayers, { id: playerId, name: playerName, isHost: isFirstPlayer }],
+          players: [...currentPlayers, { id: playerId, name: playerName, isHost: isFirstPlayer, lastHeartbeat: now }],
           hostId: isFirstPlayer ? playerId : roomSnap.data()?.hostId,
         });
       }
