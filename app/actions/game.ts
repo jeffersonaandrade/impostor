@@ -198,6 +198,16 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       .filter((p: any) => p.role === "impostor")
       .map((p: any) => p.id);
 
+    // Criar ordem de fala (turnOrder) - embaralhar todos os jogadores vivos
+    const turnOrder = [...playersWithRoles];
+    // Embaralhar usando Fisher-Yates
+    for (let i = turnOrder.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [turnOrder[i], turnOrder[j]] = [turnOrder[j], turnOrder[i]];
+    }
+    // Salvar apenas os IDs na ordem embaralhada
+    const turnOrderIds = turnOrder.map((p: any) => p.id);
+
     // Atualizar sala com dados do jogo
     await updateDoc(roomRef, {
       gameStarted: true,
@@ -215,6 +225,7 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       players: playersWithRoles,
       usedWords: updatedUsedWords,
       lastImpostorIds: newImpostorIds, // Salvar para evitar repetição na próxima partida
+      turnOrder: turnOrderIds, // Ordem de fala embaralhada
       startedAt: new Date().toISOString(),
       lastGameStartedAt: new Date().toISOString(),
     });

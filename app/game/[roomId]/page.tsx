@@ -561,7 +561,38 @@ export default function GamePage() {
 
       {/* Após revelar carta - Mostrar informações e botão de votação */}
       {gameStatus === "playing" && revealed && (
-        <div className="w-full max-w-md space-y-6 mt-20">
+        <div className="w-full max-w-md space-y-4 md:space-y-6 mt-20">
+          {/* Card de Ordem de Fala */}
+          {gameData?.turnOrder && gameData.turnOrder.length > 0 && (
+            <Card className="bg-[#0a0a0a] border-gray-700">
+              <CardContent className="p-3 md:p-4">
+                <h3 className="text-xs md:text-sm font-semibold text-gray-400 mb-2 text-center">
+                  Ordem de Dicas Sugerida
+                </h3>
+                <div className="flex flex-wrap items-center justify-center gap-1 md:gap-2 text-xs md:text-sm">
+                  {gameData.turnOrder.map((playerId: string, index: number) => {
+                    const player = gameData.players?.find((p: any) => p.id === playerId);
+                    if (!player) return null;
+                    
+                    const currentPlayerId = localStorage.getItem(`player_${roomId}`);
+                    const isDead = deadPlayerIds.includes(playerId);
+                    const isYou = playerId === currentPlayerId;
+                    
+                    return (
+                      <span key={playerId} className="flex items-center">
+                        <span className={`${isDead ? 'line-through opacity-50' : ''} ${isYou ? 'font-bold text-red-500' : 'text-gray-300'}`}>
+                          {index + 1}. {isYou ? 'Você' : player.name}
+                        </span>
+                        {index < gameData.turnOrder.length - 1 && (
+                          <span className="text-gray-600 mx-1 md:mx-2">→</span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
           {currentPlayer.role === "impostor" ? (
             <Card className="bg-red-950 border-red-800 border-2">
               <CardContent className="p-8 text-center space-y-6">
