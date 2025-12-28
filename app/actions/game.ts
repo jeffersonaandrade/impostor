@@ -267,16 +267,40 @@ export async function removePlayer(roomId: string, playerIdToRemove: string) {
       }
 
       const roomData = roomSnap.data();
-      
-      // Não permitir remover se o jogo já começou
-      if (roomData?.gameStarted || roomData?.status === "playing") {
-        throw new Error("Não é possível remover jogadores durante o jogo");
-      }
-
       const players = roomData?.players || [];
+      
+      // Encontrar o jogador a ser removido
+      const playerToRemove = players.find((p: any) => p.id === playerIdToRemove);
+      if (!playerToRemove) {
+        throw new Error("Jogador não encontrado na sala");
+      }
       
       // 1. Filtrar o jogador a ser removido
       const novosJogadores = players.filter((player: any) => player.id !== playerIdToRemove);
+      
+      // Verificar se o jogo está em andamento e se o jogador removido era o último impostor
+      const gameStatus = roomData?.status;
+      const isGameActive = gameStatus === "playing" || gameStatus === "voting";
+      
+      let updateData: any = {
+        players: novosJogadores,
+      };
+      
+      if (isGameActive && playerToRemove.role === "impostor") {
+        // Verificar quantos impostores ainda estão vivos
+        const aliveImpostors = novosJogadores.filter((p: any) => {
+          const isImpostor = p.role === "impostor";
+          const isDead = (roomData?.deadPlayerIds || []).includes(p.id);
+          return isImpostor && !isDead;
+        });
+        
+        // Se não há mais impostores vivos, cidadãos vencem
+        if (aliveImpostors.length === 0) {
+          updateData.status = "finished";
+          updateData.winner = "citizens";
+          updateData.deadPlayerIds = [...(roomData?.deadPlayerIds || []), playerIdToRemove];
+        }
+      }
 
       // 2. Verificação de Sala Vazia (CRÍTICO)
       if (novosJogadores.length === 0) {
@@ -298,10 +322,11 @@ export async function removePlayer(roomId: string, playerIdToRemove: string) {
         });
       }
 
-      // Atualizar sala removendo o jogador
+      // Atualizar sala removendo o jogador (mesclar updateData com hostId)
       transaction.update(roomRef, {
-        players: novosJogadores,
-        hostId: hostId,
+        ...updateData,
+        players: updateData.players || novosJogadores,
+        hostId: hostId || roomData?.hostId,
       });
     });
 
@@ -360,7 +385,7 @@ export async function resetGame(roomId: string) {
 }
 
 /**
- * Sistema de Heartbeat - Mantém jogadores ativos e remove inativos
+ * Sistema de Heartbeat - Apenas registra presença (sem auto-kick)
  * @param roomId - ID da sala
  * @param playerId - ID do jogador
  */
@@ -390,74 +415,12 @@ export async function sendHeartbeat(roomId: string, playerId: string) {
       lastHeartbeat: now,
     };
 
-    // Limpeza automática: Remover jogadores inativos (sem heartbeat há 20 segundos)
-    const INACTIVE_THRESHOLD = 20000; // 20 segundos em milissegundos
-    const activePlayers = updatedPlayers.filter((p: any) => {
-      // Se não tem lastHeartbeat, considerar ativo (jogadores antigos sem heartbeat ainda)
-      // Mas só se o jogo não estiver em andamento (para não remover durante o jogo)
-      if (!p.lastHeartbeat) {
-        const gameStatus = roomData?.status;
-        const isGameActive = gameStatus === "playing" || gameStatus === "voting";
-        // Se o jogo está ativo, considerar inativo se não tem heartbeat
-        // Se o jogo não está ativo, considerar ativo (compatibilidade)
-        return !isGameActive;
-      }
-      const timeSinceHeartbeat = now - p.lastHeartbeat;
-      return timeSinceHeartbeat < INACTIVE_THRESHOLD;
-    });
-
-    // Se houve remoção de jogadores inativos
-    const removedPlayers = updatedPlayers.length - activePlayers.length;
-    if (removedPlayers > 0) {
-      console.log(`[HEARTBEAT] Removidos ${removedPlayers} jogador(es) inativo(s) da sala ${roomId}`);
-    }
-
-    // Verificar se o jogo está em andamento e se há jogadores suficientes
-    const gameStatus = roomData?.status;
-    const isGameActive = gameStatus === "playing" || gameStatus === "voting";
-    
-    if (isGameActive && activePlayers.length < 3) {
-      // Abortar jogo se não houver jogadores suficientes
-      console.log(`[HEARTBEAT] Jogo abortado: apenas ${activePlayers.length} jogador(es) ativo(s)`);
-      
-      // Se o host foi removido, transferir host para o primeiro jogador restante
-      let hostId = roomData?.hostId;
-      const hostStillActive = activePlayers.some((p: any) => p.id === hostId);
-      
-      if (!hostStillActive && activePlayers.length > 0) {
-        hostId = activePlayers[0].id;
-        activePlayers.forEach((player: any, index: number) => {
-          player.isHost = index === 0;
-        });
-      }
-
-      await updateDoc(roomRef, {
-        players: activePlayers,
-        hostId: hostId || (activePlayers.length > 0 ? activePlayers[0].id : null),
-        status: "aborted",
-        gameStarted: false,
-        abortedReason: "Jogadores insuficientes (menos de 3 ativos)",
-      });
-      
-      return { success: true, gameAborted: true, activePlayers: activePlayers.length };
-    }
-
-    // Atualizar lista de jogadores (com heartbeats atualizados)
+    // Apenas atualizar o heartbeat, sem remover jogadores ou abortar jogo
     await updateDoc(roomRef, {
-      players: activePlayers,
-      // Se o host foi removido, transferir host
-      ...(removedPlayers > 0 && !activePlayers.some((p: any) => p.id === roomData?.hostId) && activePlayers.length > 0
-        ? {
-            hostId: activePlayers[0].id,
-            players: activePlayers.map((p: any, index: number) => ({
-              ...p,
-              isHost: index === 0,
-            })),
-          }
-        : {}),
+      players: updatedPlayers,
     });
 
-    return { success: true, activePlayers: activePlayers.length };
+    return { success: true };
   } catch (error) {
     console.error("Erro ao enviar heartbeat:", error);
     throw error;

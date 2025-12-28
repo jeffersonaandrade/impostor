@@ -11,6 +11,7 @@ import { AlertTriangle, LogOut, Users, Vote } from "lucide-react";
 import { useGameStore } from "@/lib/store";
 import { resetGame, removePlayer, sendHeartbeat } from "@/app/actions/game";
 import { requestVote, submitVote, forceEndVoting } from "@/app/actions/voting";
+import { Trash2 } from "lucide-react";
 import Image from "next/image";
 
 export default function GamePage() {
@@ -577,12 +578,37 @@ export default function GamePage() {
                     const currentPlayerId = localStorage.getItem(`player_${roomId}`);
                     const isDead = deadPlayerIds.includes(playerId);
                     const isYou = playerId === currentPlayerId;
+                    const canRemove = isHost && playerId !== currentPlayerId;
+                    
+                    const handleRemovePlayer = async () => {
+                      if (!confirm(`Tem certeza que deseja remover ${player.name}?`)) {
+                        return;
+                      }
+                      
+                      try {
+                        await removePlayer(roomId, playerId);
+                        setToastMessage(`${player.name} foi removido da sala`);
+                        setShowToast(true);
+                      } catch (error: any) {
+                        setToastMessage(error.message || "Erro ao remover jogador");
+                        setShowToast(true);
+                      }
+                    };
                     
                     return (
-                      <span key={playerId} className="flex items-center">
+                      <span key={playerId} className="flex items-center gap-1">
                         <span className={`${isDead ? 'line-through opacity-50' : ''} ${isYou ? 'font-bold text-red-500' : 'text-gray-300'}`}>
                           {index + 1}. {isYou ? 'Você' : player.name}
                         </span>
+                        {canRemove && (
+                          <button
+                            onClick={handleRemovePlayer}
+                            className="text-red-500 hover:text-red-600 hover:bg-red-500/10 p-1 rounded transition-colors"
+                            title={`Remover ${player.name}`}
+                          >
+                            <Trash2 className="h-3 w-3 md:h-4 md:w-4" />
+                          </button>
+                        )}
                         {index < gameData.turnOrder.length - 1 && (
                           <span className="text-gray-600 mx-1 md:mx-2">→</span>
                         )}
