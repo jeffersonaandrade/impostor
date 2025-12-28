@@ -429,8 +429,11 @@ export default function GamePage() {
     );
   }
 
+  // Verificar se há muitos jogadores vivos (6+) para ajustar layout
+  const hasManyPlayers = alivePlayers.length >= 6;
+  
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 pb-32 relative">
+    <div className={`min-h-screen flex items-center justify-center p-4 ${hasManyPlayers && isHost ? 'pb-24 md:pb-32' : 'pb-32'} relative`}>
       {/* Botão Sair - Canto superior direito */}
       <div className="absolute top-4 right-4">
         <Button
@@ -468,14 +471,15 @@ export default function GamePage() {
 
       {/* Fase de Votação - Para jogadores vivos */}
       {gameStatus === "voting" && isAlive && (
-        <div className="w-full max-w-md space-y-4 mt-20">
+        <div className={`w-full max-w-md ${isHost ? 'space-y-2 md:space-y-4' : 'space-y-4'} mt-20`}>
           <Card className="bg-[#0a0a0a] border-gray-800">
-            <CardContent className="p-6 space-y-4">
-              <h3 className="text-xl font-bold text-white text-center">Votação em Andamento</h3>
-              <p className="text-gray-400 text-sm text-center">
+            <CardContent className="p-4 md:p-6 space-y-3 md:space-y-4">
+              <h3 className="text-lg md:text-xl font-bold text-white text-center">Votação em Andamento</h3>
+              <p className="text-gray-400 text-xs md:text-sm text-center">
                 Escolha quem você acha que é o impostor
               </p>
-              <div className="space-y-2">
+              {/* Lista de jogadores com scroll interno se houver 6+ jogadores */}
+              <div className={`space-y-2 ${alivePlayers.length >= 6 ? 'max-h-[40vh] md:max-h-[50vh] overflow-y-auto pr-1' : ''}`}>
                 {alivePlayers.map((player: any) => {
                   if (player.id === playerId) return null; // Não pode votar em si mesmo
                   return (
@@ -483,7 +487,7 @@ export default function GamePage() {
                       key={player.id}
                       onClick={() => setSelectedVoteTarget(player.id)}
                       variant={selectedVoteTarget === player.id ? "default" : "outline"}
-                      className={`w-full ${
+                      className={`w-full ${alivePlayers.length >= 6 ? 'text-xs md:text-sm py-1.5 md:py-2' : 'text-sm md:text-base'} ${
                         selectedVoteTarget === player.id
                           ? "bg-red-600 hover:bg-red-700 text-white"
                           : "border-gray-700 text-white hover:bg-gray-900"
@@ -499,13 +503,13 @@ export default function GamePage() {
                 <Button
                   onClick={handleSubmitVote}
                   disabled={!selectedVoteTarget}
-                  className="w-full bg-red-600 hover:bg-red-700 text-white"
+                  className="w-full bg-red-600 hover:bg-red-700 text-white py-2 md:py-3"
                 >
                   Confirmar Voto
                 </Button>
               )}
               {hasVoted && (
-                <p className="text-center text-gray-400 text-sm">
+                <p className="text-center text-gray-400 text-xs md:text-sm">
                   Aguardando outros jogadores votarem...
                 </p>
               )}
@@ -516,18 +520,18 @@ export default function GamePage() {
 
       {/* Botão para Host forçar fim da votação - SEMPRE visível quando status === 'voting' */}
       {gameStatus === "voting" && isHost && (
-        <div className="w-full max-w-md space-y-4 mt-20">
+        <div className={`w-full max-w-md ${isAlive ? 'space-y-2 md:space-y-4' : 'space-y-4'} ${isAlive ? 'mt-4 md:mt-6' : 'mt-20'} ${alivePlayers.length >= 6 ? 'fixed bottom-4 left-1/2 transform -translate-x-1/2 px-4 z-10' : ''}`}>
           <Card className="bg-[#0a0a0a] border-orange-800">
-            <CardContent className="p-4">
+            <CardContent className="p-3 md:p-4">
               <Button
                 onClick={handleForceEndVoting}
                 variant="outline"
-                className="w-full border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
+                className="w-full border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400 py-2 md:py-3 text-sm md:text-base"
                 disabled={isForcingVote}
               >
                 {isForcingVote ? "Encerrando..." : "Encerrar Votação (Forçar)"}
               </Button>
-              <p className="text-xs text-gray-500 text-center mt-2">
+              <p className="text-xs text-gray-500 text-center mt-1 md:mt-2 hidden md:block">
                 Controle do Host - Disponível mesmo se eliminado
               </p>
             </CardContent>
