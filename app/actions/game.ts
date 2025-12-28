@@ -90,55 +90,42 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
     // LÓGICA DE ATRIBUIÇÃO DE PAPÉIS (ROLE ASSIGNMENT)
     // ============================================
     
-    // Ler último(s) impostor(es) da partida anterior (Smart Shuffle - Memória Recente)
+    // a) Validação da Sala (já feita acima)
+    const totalPlayers = players.length;
+    
+    // b) Sorteio da Palavra (já feito acima - secret_word e category)
+    
+    // c) Sorteio do(s) Impostor(es) ID(s) - Smart Shuffle
     const lastImpostorIds = roomData?.lastImpostorIds || [];
     
-    // 1. Criar array de papéis com tamanho exato dos jogadores (Algoritmo "Baralho de Cartas")
-    const totalPlayers = players.length;
-    let roles: ("impostor" | "citizen")[];
-    let playersWithRoles: any[];
-    let rerollAttempts = 0;
-    const maxRerollAttempts = 10; // Limite de tentativas para evitar loop infinito
+    // Criar array de IDs de jogadores candidatos a impostor
+    const candidateIds = players.map((p: any) => p.id);
     
-    // 2. Smart Shuffle: Reembaralhar até que nenhum impostor seja o mesmo da última partida
+    // Selecionar impostores evitando repetição da última partida
+    let selectedImpostorIds: string[] = [];
+    let rerollAttempts = 0;
+    const maxRerollAttempts = 10;
+    
     do {
-      roles = new Array(totalPlayers);
-      
-      // Preencher com quantidade exata de impostores e resto cidadãos
-      for (let i = 0; i < totalPlayers; i++) {
-        roles[i] = i < numImpostors ? "impostor" : "citizen";
-      }
-      
-      // Embaralhamento Robusto (Fisher-Yates Shuffle)
-      for (let i = roles.length - 1; i > 0; i--) {
+      // Criar cópia dos candidatos e embaralhar
+      const shuffledCandidates = [...candidateIds];
+      for (let i = shuffledCandidates.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [roles[i], roles[j]] = [roles[j], roles[i]];
+        [shuffledCandidates[i], shuffledCandidates[j]] = [shuffledCandidates[j], shuffledCandidates[i]];
       }
       
-      // Mapeamento 1:1 - Atribuir roles[index] para cada jogador
-      playersWithRoles = players.map((player: any, index: number) => {
-        const { role: _, ...playerWithoutRole } = player; // Remover role anterior se existir
-        return {
-          ...playerWithoutRole,
-          role: roles[index],
-        };
-      });
+      // Selecionar os primeiros N como impostores
+      selectedImpostorIds = shuffledCandidates.slice(0, numImpostors);
       
-      // Verificar se algum dos novos impostores é o mesmo da última partida
-      const newImpostorIds = playersWithRoles
-        .filter((p: any) => p.role === "impostor")
-        .map((p: any) => p.id);
-      
-      // Se houver sobreposição e não for o único jogador possível, reembaralhar
+      // Verificar se há sobreposição com última partida
       const hasOverlap = lastImpostorIds.length > 0 && 
-                         newImpostorIds.some((id: string) => lastImpostorIds.includes(id)) &&
-                         newImpostorIds.length < totalPlayers; // Só reroll se houver alternativas
+                         selectedImpostorIds.some((id: string) => lastImpostorIds.includes(id)) &&
+                         selectedImpostorIds.length < totalPlayers;
       
       if (hasOverlap && rerollAttempts < maxRerollAttempts) {
         rerollAttempts++;
         console.log(`[SMART SHUFFLE] Reroll ${rerollAttempts}/${maxRerollAttempts}: Impostor anterior detectado. Reembaralhando...`);
       } else {
-        // Sucesso: nenhum impostor repetido OU esgotamos tentativas OU é o único possível
         if (rerollAttempts > 0) {
           console.log(`[SMART SHUFFLE] Sucesso após ${rerollAttempts} reroll(s).`);
         }
@@ -146,60 +133,32 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       }
     } while (rerollAttempts < maxRerollAttempts);
     
-    // 5. Validação de Segurança (Safety Check) - ANTES de salvar no Firestore
-    let contagemImpostores = playersWithRoles.filter((p: any) => p.role === "impostor").length;
+    // Debug: Log do(s) impostor(es) selecionado(s)
+    console.log(`[ROLE ASSIGNMENT] Impostor(es) selecionado(s): ${selectedImpostorIds.join(", ")}`);
     
-    if (contagemImpostores !== numImpostors) {
-      // Correção manual: garantir que a contagem esteja correta
-      console.error(`ERRO CRÍTICO: Contagem de impostores incorreta! Solicitado: ${numImpostors}, Gerado: ${contagemImpostores}`);
+    // d) Mapeamento dos Jogadores - EXPLÍCITO E À PROVA DE FALHAS
+    const now = Date.now();
+    const updatedPlayers = players.map((player: any) => {
+      const isImpostor = selectedImpostorIds.includes(player.id); // Comparação direta
       
-      // Forçar correção: criar novo array de roles e embaralhar
-      const correctedRoles: ("impostor" | "citizen")[] = new Array(totalPlayers);
-      for (let i = 0; i < totalPlayers; i++) {
-        correctedRoles[i] = i < numImpostors ? "impostor" : "citizen";
-      }
-      
-      // Embaralhar os roles usando Fisher-Yates
-      for (let i = correctedRoles.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [correctedRoles[i], correctedRoles[j]] = [correctedRoles[j], correctedRoles[i]];
-      }
-      
-      // Atribuir roles corrigidos aos jogadores
-      const playersCorrected = players.map((player: any, index: number) => {
-        const { role: _, ...playerWithoutRole } = player; // Remover role anterior
-        return {
-          ...playerWithoutRole,
-          role: correctedRoles[index], // FORÇAR atribuição do role correto
-        };
-      });
-      
-      // Re-validar após correção
-      contagemImpostores = playersCorrected.filter((p: any) => p.role === "impostor").length;
-      if (contagemImpostores !== numImpostors) {
-        throw new Error(`Falha crítica na atribuição de papéis. Jogadores: ${totalPlayers}, Impostores solicitados: ${numImpostors}, Impostores gerados: ${contagemImpostores}`);
-      }
-      
-      // Usar a versão corrigida
-      playersWithRoles = playersCorrected;
-      
-      // 6. Logging
-      console.log(`[ROLE ASSIGNMENT] Jogadores: ${totalPlayers}, Impostores Solicitados: ${numImpostors}, Impostores Gerados: ${contagemImpostores} (CORRIGIDO)`);
-    } else {
-      // 6. Logging
-      console.log(`[ROLE ASSIGNMENT] Jogadores: ${totalPlayers}, Impostores Solicitados: ${numImpostors}, Impostores Gerados: ${contagemImpostores}`);
+      return {
+        ...player,
+        role: isImpostor ? 'impostor' : 'citizen', // Força o papel explicitamente
+        lastHeartbeat: now, // Reset para evitar kick inicial
+      };
+    });
+    
+    // Validação final: garantir que temos exatamente numImpostors
+    const impostorCount = updatedPlayers.filter((p: any) => p.role === 'impostor').length;
+    if (impostorCount !== numImpostors) {
+      console.error(`[ROLE ASSIGNMENT] ERRO: Esperado ${numImpostors} impostor(es), encontrado ${impostorCount}`);
+      throw new Error(`Falha crítica na atribuição de papéis. Esperado: ${numImpostors}, Gerado: ${impostorCount}`);
     }
-
-    // Adicionar a nova palavra ao array de palavras usadas
-    const updatedUsedWords = [...usedWords, secret_word];
     
-    // Extrair IDs dos novos impostores para o próximo Smart Shuffle
-    const newImpostorIds = playersWithRoles
-      .filter((p: any) => p.role === "impostor")
-      .map((p: any) => p.id);
-
-    // Criar ordem de fala (turnOrder) - embaralhar todos os jogadores vivos
-    const turnOrder = [...playersWithRoles];
+    console.log(`[ROLE ASSIGNMENT] Jogadores: ${totalPlayers}, Impostores: ${impostorCount} ✅`);
+    
+    // e) Definição da Ordem de Fala (turnOrder)
+    const turnOrder = [...updatedPlayers];
     // Embaralhar usando Fisher-Yates
     for (let i = turnOrder.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -209,17 +168,21 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
     // Smart Shuffle de Turno: Garantir que o mesmo jogador não comece consecutivamente
     const lastStarterId = roomData?.lastStarterId;
     if (lastStarterId && turnOrder.length > 1 && turnOrder[0].id === lastStarterId) {
-      // Se o primeiro jogador é o mesmo da última vez, mover para o final
       const firstPlayer = turnOrder.shift();
       if (firstPlayer) {
         turnOrder.push(firstPlayer);
       }
-      console.log(`[TURN ORDER] Jogador ${lastStarterId} estava no início. Movido para o final para garantir rotação.`);
+      console.log(`[TURN ORDER] Jogador ${lastStarterId} estava no início. Movido para o final.`);
     }
     
-    // Salvar apenas os IDs na ordem embaralhada
     const turnOrderIds = turnOrder.map((p: any) => p.id);
-    const newStarterId = turnOrderIds[0]; // ID do primeiro jogador desta rodada
+    const newStarterId = turnOrderIds[0];
+    
+    // Adicionar a nova palavra ao array de palavras usadas
+    const updatedUsedWords = [...usedWords, secret_word];
+    
+    // Extrair IDs dos novos impostores para o próximo Smart Shuffle
+    const newImpostorIds = selectedImpostorIds;
 
     // Atualizar sala com dados do jogo
     await updateDoc(roomRef, {
@@ -235,7 +198,7 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       voteRequests: [],
       votes: {},
       winner: null,
-      players: playersWithRoles,
+      players: updatedPlayers,
       usedWords: updatedUsedWords,
       lastImpostorIds: newImpostorIds, // Salvar para evitar repetição na próxima partida
       turnOrder: turnOrderIds, // Ordem de fala embaralhada
