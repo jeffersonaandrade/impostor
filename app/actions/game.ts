@@ -205,8 +205,21 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       const j = Math.floor(Math.random() * (i + 1));
       [turnOrder[i], turnOrder[j]] = [turnOrder[j], turnOrder[i]];
     }
+    
+    // Smart Shuffle de Turno: Garantir que o mesmo jogador não comece consecutivamente
+    const lastStarterId = roomData?.lastStarterId;
+    if (lastStarterId && turnOrder.length > 1 && turnOrder[0].id === lastStarterId) {
+      // Se o primeiro jogador é o mesmo da última vez, mover para o final
+      const firstPlayer = turnOrder.shift();
+      if (firstPlayer) {
+        turnOrder.push(firstPlayer);
+      }
+      console.log(`[TURN ORDER] Jogador ${lastStarterId} estava no início. Movido para o final para garantir rotação.`);
+    }
+    
     // Salvar apenas os IDs na ordem embaralhada
     const turnOrderIds = turnOrder.map((p: any) => p.id);
+    const newStarterId = turnOrderIds[0]; // ID do primeiro jogador desta rodada
 
     // Atualizar sala com dados do jogo
     await updateDoc(roomRef, {
@@ -226,6 +239,7 @@ export async function startGame(roomId: string, theme: string, numImpostors: num
       usedWords: updatedUsedWords,
       lastImpostorIds: newImpostorIds, // Salvar para evitar repetição na próxima partida
       turnOrder: turnOrderIds, // Ordem de fala embaralhada
+      lastStarterId: newStarterId, // Salvar quem começou esta rodada para próxima partida
       startedAt: new Date().toISOString(),
       lastGameStartedAt: new Date().toISOString(),
     });
