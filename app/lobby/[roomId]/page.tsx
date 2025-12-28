@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Toast } from "@/components/ui/toast";
-import { Copy, MessageCircle, Clock, X, LogOut, QrCode } from "lucide-react";
+import { Copy, Clock, X, LogOut, QrCode } from "lucide-react";
 import QRCodeSVG from "react-qr-code";
 import { useGameStore } from "@/lib/store";
 import { startGame, removePlayer, sendHeartbeat } from "@/app/actions/game";
@@ -242,12 +242,6 @@ export default function LobbyPage() {
     }
   };
 
-  const handleShareWhatsApp = () => {
-    if (!inviteLink) return;
-    const message = encodeURIComponent(`Vem jogar Impostor comigo! 🎮\n\n${inviteLink}`);
-    window.open(`https://wa.me/?text=${message}`, "_blank");
-  };
-
   const handleRemovePlayer = async (playerIdToRemove: string) => {
     if (!isHost) return;
     if (playerIdToRemove === currentPlayerId) return; // Não pode remover a si mesmo
@@ -364,24 +358,14 @@ export default function LobbyPage() {
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button
-                onClick={handleShareWhatsApp}
-                variant="outline"
-                className="flex-1 border-gray-700 text-white hover:bg-gray-900 hover:text-white"
-              >
-                <MessageCircle className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Compartilhar no </span>WhatsApp
-              </Button>
-              <Button
-                onClick={() => setShowQRCode(!showQRCode)}
-                variant="outline"
-                className="flex-1 border-gray-700 text-white hover:bg-gray-900 hover:text-white"
-              >
-                <QrCode className="h-4 w-4 mr-2" />
-                {showQRCode ? "Ocultar" : "Mostrar"} QR Code
-              </Button>
-            </div>
+            <Button
+              onClick={() => setShowQRCode(!showQRCode)}
+              variant="outline"
+              className="w-full border-gray-700 text-white hover:bg-gray-900 hover:text-white"
+            >
+              <QrCode className="h-4 w-4 mr-2" />
+              {showQRCode ? "Ocultar" : "Mostrar"} QR Code
+            </Button>
             {/* Seção do QR Code - Expansível */}
             {showQRCode && qrCodeUrl && (
               <div className="pt-4 border-t border-gray-800">
